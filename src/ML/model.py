@@ -1,3 +1,4 @@
+from sklearn.model_selection import KFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
@@ -6,17 +7,14 @@ from xgboost import XGBClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from catboost import CatBoostClassifier
+from lightgbm import LGBMClassifier
 
 
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score, roc_curve, confusion_matrix
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import RobustScaler
-
-import importlib.util
-spec = importlib.util.spec_from_file_location("cvxEDA", "/Users/fabriziovasquez/Downloads/PFCII/pyEDA/pyEDA/cvxEDA.py")
-cvxEDA = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(cvxEDA)
 
 import neurokit2 as nk
 import numpy as np
@@ -37,7 +35,10 @@ def eda_custom_process(eda_signal, sampling_rate=4):
 class MachineLearningPipeline:
     def __init__(self, file_path):
         self.file_path = file_path
-        self.data = pd.read_csv(file_path)
+        try:
+            self.data = pd.read_csv(file_path)
+        except pd.errors.ParserError:
+            self.data = pd.read_csv(file_path, engine='python')
 
     def extract_phasic_component(self):
         signal = self.data['MEAN_EDA_WRIST']
@@ -116,31 +117,18 @@ results_df = pd.DataFrame(columns=[
 
 # Lista de los modelos a probar junto con un conjunto de hiperparámetros para cada modelo
 models_and_params = [
-    (LogisticRegression(), {'C': [0.1, 1, 10]}),
-    (SVC(probability=True), {'C': [0.1, 1, 10], 'kernel': ['linear', 'rbf']}),
-    (RandomForestClassifier(), {'n_estimators': [50, 100, 150], 'max_depth': [None, 10, 20]}),
-    (KNeighborsClassifier(), {'n_neighbors': [3, 5, 7], 'weights': ['uniform', 'distance']}),
+    (LogisticRegression(), {'C': [0.01, 0.1, 1, 10, 100], 'penalty': ['l1', 'l2', 'elasticnet'], 'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']}),
+    (SVC(probability=True), {'C': [0.1, 1, 10, 100], 'kernel': ['linear', 'poly', 'rbf', 'sigmoid'], 'gamma': ['scale', 'auto']}),
+    (RandomForestClassifier(), {'n_estimators': [50, 100, 150], 'max_depth': [None, 10, 20], 'min_samples_split': [2, 5, 10], 'min_samples_leaf': [1, 2, 4]}),
+    (KNeighborsClassifier(), {'n_neighbors': [3, 5, 7, 9], 'weights': ['uniform', 'distance'], 'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']}),
+    (GradientBoostingClassifier(), {'n_estimators': [50, 100, 150], 'learning_rate': [0.01, 0.1, 0.2], 'max_depth': [3, 5, 10]}),
+    (AdaBoostClassifier(), {'n_estimators': [50, 100, 150], 'learning_rate': [0.01, 0.1, 1]}),
+    (XGBClassifier(eval_metric='logloss'), {'n_estimators': [50, 100, 150], 'learning_rate': [0.01, 0.1, 0.2], 'max_depth': [3, 5, 10]}),
+    (LGBMClassifier(), {'n_estimators': [50, 100, 150], 'learning_rate': [0.01, 0.1, 0.2], 'max_depth': [3, 5, 10]}),
+    (CatBoostClassifier(verbose=0), {'iterations': [50, 100, 150], 'learning_rate': [0.01, 0.1, 0.2], 'depth': [3, 5, 7, 9]}),
+    (GaussianNB(), {}),
+    (DecisionTreeClassifier(), {'criterion': ['gini', 'entropy'], 'splitter': ['best', 'random'], 'max_depth': [None, 10, 20, 30], 'min_samples_split': [2, 5, 10], 'min_samples_leaf': [1, 2, 4]}),
 ]
-
-"""
-best_model_info = {'Model': '', 'Accuracy': 0, 'F1 Score': 0, 'File': ''}
-
-# Bucle sobre cada archivo y cada modelo
-for file_path in file_paths:
-    print(f"Processing file: {file_path}\n")
-    pipeline = MachineLearningPipeline(file_path)
-    pipeline.extract_phasic_component()
-    pipeline.preprocess_data()
-    pipeline.split_data()
-    
-    for model, params in models_and_params:
-        model_name, accuracy, f1 = pipeline.train_and_evaluate(model, params)
-        #best_model_info.update({'Model': model_name, 'Accuracy': accuracy, 'F1 Score': f1, 'File': file_path})
-        print("Model:\t",model_name, "Accuracy:\t",round(accuracy*100,4), "F1 Score:\t",round(f1*100,4))
-        if accuracy > best_model_info['Accuracy']:
-            best_model_info.update({'Model': model_name, 'Accuracy': accuracy, 'F1 Score': f1, 'File': file_path})
-print(f"Best model: {best_model_info['Model']} from file: {best_model_info['File']}\nAccuracy: {best_model_info['Accuracy']*100:.2f}%\nF1 Score: {best_model_info['F1 Score']*100:.2f}%")
-"""
 
 best_model_info = {'Model': '', 'File': '', 'WEIGHTED_F1': 0}
 
